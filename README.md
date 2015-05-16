@@ -18,11 +18,13 @@ Nya::Smtp smtp("smtp.yandex.ru", "login@yandex.ru", "password");
 // QObject::connect(&smtp, SIGNAL(SignalError(QString)), &Nya::Log::GS(), SLOT(OnLog(QString)));
 smtp.Connect();
 
+// first simple mail
 s_p<Nya::Mail> mail(new Nya::Mail("login@yandex.ru", "Subject", "Mail body"));
 mail->AddRecipient("login@gmail.com");
 mail->AddAttachment("file.txt");
 smtp.Send(mail);
 
+// second mail with QByteArray and QFile attachments
 QByteArray ba = "Text 2";
 QFile* file = new QFile("file.txt");
 
@@ -31,4 +33,5 @@ mail->AddRecipient("login@gmail.com");
 mail->SetText("Long mail body");
 mail->AddAttachment("ba.txt", new Nya::Attachment(&ba));
 mail->AddAttachment("file.txt", new Nya::Attachment(file));
+smtp.Send(mail);
 ```
