@@ -8,6 +8,11 @@ But it uses C++11.
 
 ## Example
 ``` c++
+#include "SmtpNya.hpp"
+#include "MailNya.hpp"
+
+...
+
 Nya::Smtp smtp("smtp.yandex.ru", "login@yandex.ru", "password");
 QObject::connect(&smtp, SIGNAL(SignalError(QString)), &Nya::Log::GS(), SLOT(OnLog(QString)));
 smtp.Connect();
