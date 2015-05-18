@@ -6,8 +6,6 @@
 #include <QTextCodec>
 #include <QUuid>
 
-#include "LogNya.hpp"
-
 #include "MailNya.hpp"
 
 

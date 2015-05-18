@@ -2,8 +2,8 @@
 #define SMTPNYA_H
 
 #include "CommonMail.hpp"
+#include <QAbstractSocket>
 #include <QHash>
-#include <QHostAddress>
 #include <QList>
 #include <QPair>
 #include <QStringList>
@@ -74,9 +74,13 @@ class Smtp : public QObject
 	AuthType authType;
 	int allowedAuthTypes;
 
+	QByteArray defaultSender;
+	QStringList defaultRecipients;
+	QString defaultSubject;
+
+	QStringList recipients;
 	QHash<QString, QString> extensions;
 	QList<s_p<Mail>> pending;
-	QStringList recipients;
 	int rcptNumber;
 	int rcptAck;
 	bool mailAck;
@@ -93,13 +97,15 @@ public:
 	Smtp(const QString& host, const QByteArray& username, const QByteArray& password, QObject* parent = 0);
 
 	QTcpSocket* GetSocket() const { return (QTcpSocket*)socket; }
-	void SetPort(quint16 port) { this->port = port; }
-
 	bool HasExtension(const QString& extension) { return extensions.contains(extension); }
 	QString ExtensionData(const QString& extension) { return extensions[extension]; }
-
 	bool IsAuthMethodEnabled(AuthType type) const { return allowedAuthTypes & type; }
+
+	void SetPort(quint16 port) { this->port = port; }
 	void SetAuthMethodEnabled(AuthType type, bool enable) { if( enable ) allowedAuthTypes |= type; else allowedAuthTypes &= ~type; }
+	void SetSender(const QByteArray& sender) { defaultSender = sender; }
+	void SetRecipients(const QStringList recipients) { defaultRecipients = recipients; }
+	void SetSubject(const QString& subject) { defaultSubject = subject; }
 
 	void Connect();
 	void Disconnect();
@@ -114,18 +120,21 @@ private:
 	void AuthenticatePlain();
 	void AuthenticateLogin();
 
-	void SendNext(const QByteArray& code, const QByteArray& line);
+	void SendMail(const QByteArray& code, const QByteArray& line);
 	void SendBody(const QByteArray& code, const QByteArray& line);
 	void SendEhlo();
+	void SendNext();
 
 private slots:
 	void OnSocketError(QAbstractSocket::SocketError err);
 	void OnSocketRead();
-	void OnSendNext();
+
+	void OnMail(const QString& text, const QString& subject = "");
 
 signals:
 	void SignalError(const QString& message);
 	void SignalDone(s_p<Mail> mail);
+	void SignalAllDone();
 };
 }
 

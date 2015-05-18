@@ -5,6 +5,7 @@
 #include <memory>
 
 #define s_p std::shared_ptr
+#define make_s_p std::make_shared
 
 
 namespace Nya

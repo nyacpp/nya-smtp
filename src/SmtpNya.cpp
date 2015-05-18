@@ -3,6 +3,7 @@
 #include <QCryptographicHash>
 #include <QStringList>
 #include <QTcpSocket>
+#include <QThread>
 #include <QNetworkInterface>
 #ifndef QT_NO_OPENSSL
 #    include <QSslSocket>
@@ -192,6 +193,7 @@ Smtp::Smtp(const QString& host, const QByteArray& username, const QByteArray& pa
 	, username(username)
 	, password(password)
 	, allowedAuthTypes(AuthPlain | AuthLogin | AuthCramMD5)
+	, defaultSender(username)
 {
 #ifndef QT_NO_OPENSSL
 	socket = new QSslSocket(this);
@@ -200,6 +202,13 @@ Smtp::Smtp(const QString& host, const QByteArray& username, const QByteArray& pa
 #endif
 	connect(socket, SIGNAL(error(QAbstractSocket::SocketError)), SLOT(OnSocketError(QAbstractSocket::SocketError)));
 	connect(socket, SIGNAL(readyRead()), SLOT(OnSocketRead()));
+
+	if( !parent )
+	{
+		QThread* thread = new QThread(this);
+		moveToThread(thread);
+		thread->start();
+	}
 }
 
 /**
@@ -207,6 +216,8 @@ Smtp::Smtp(const QString& host, const QByteArray& username, const QByteArray& pa
  */
 void Smtp::Connect()
 {
+	if( state != Disconnected ) return;
+
 	state = StartState;
 #ifndef QT_NO_OPENSSL
 	((QSslSocket*)socket)->connectToHostEncrypted(host, port);
@@ -229,7 +240,7 @@ void Smtp::Disconnect()
 void Smtp::Send(s_p<Mail> mail)
 {
 	pending.append(mail);
-	if( state == Waiting ) OnSendNext();
+	if( state == Waiting ) SendNext();
 }
 
 /**
@@ -300,7 +311,7 @@ void Smtp::Authenticate()
 	if (!extensions.contains("AUTH") || username.isEmpty() || password.isEmpty())
 	{
 		state = Authenticated;
-		OnSendNext();
+		SendNext();
 	}
 	else
 	{
@@ -320,7 +331,7 @@ void Smtp::Authenticate()
 		else
 		{
 			state = Authenticated;
-			OnSendNext();
+			SendNext();
 		}
 	}
 }
@@ -396,7 +407,7 @@ void Smtp::AuthenticateLogin()
 /**
  * Send next mail.
  */
-void Smtp::SendNext(const QByteArray& code, const QByteArray& line)
+void Smtp::SendMail(const QByteArray& code, const QByteArray& line)
 {
 	if( !pending.count() ) return;
 	s_p<Mail> mail = pending.first();
@@ -429,7 +440,7 @@ void Smtp::SendNext(const QByteArray& code, const QByteArray& line)
 		{
 			emit SignalError(QString("No recipients were considered valid: %1 - %2").arg(QString(line)).arg(code.toInt()));
 			pending.removeFirst();
-			OnSendNext();
+			SendNext();
 		}
 		else
 		{
@@ -462,7 +473,7 @@ void Smtp::SendBody(const QByteArray& code, const QByteArray& line)
 	{
 		emit SignalError(QString("Mail failed: %1 - %2").arg(QString(line)).arg(code.toInt()));
 		pending.removeFirst();
-		OnSendNext();
+		SendNext();
 		return;
 	}
 
@@ -490,11 +501,59 @@ void Smtp::SendEhlo()
 }
 
 /**
+ * Send.
+ */
+void Smtp::SendNext()
+{
+	if (state == Disconnected) return;
+	if (pending.isEmpty())
+	{
+		state = Waiting;
+		return;
+	}
+	if (state != Waiting)
+	{
+		state = Resetting;
+		socket->write("rset\r\n");
+		return;
+	}
+	s_p<Mail> mail = pending.first();
+	rcptNumber = rcptAck = mailAck = 0;
+	recipients = mail->GetRecipients(R_TO) +
+				 mail->GetRecipients(R_CC) +
+				 mail->GetRecipients(R_BCC);
+	if (recipients.count() == 0)
+	{
+		emit SignalError("No recipients!");
+		pending.removeFirst();
+		SendNext();
+		return;
+	}
+	socket->write("mail from:<" + ExtractAddress(mail->GetSender()) + ">\r\n");
+	if (extensions.contains("PIPELINING"))
+	{
+		for (const QString& recipient : recipients)
+		{
+			socket->write("rcpt to:<" + ExtractAddress(recipient) + ">\r\n");
+		}
+		state = RcptAckPending;
+	}
+	else
+	{
+		state = MailToSent;
+	}
+}
+
+/**
  * Socket error.
  */
 void Smtp::OnSocketError(QAbstractSocket::SocketError err)
 {
-	if( err == QAbstractSocket::RemoteHostClosedError ) return;
+	if( err == QAbstractSocket::RemoteHostClosedError )
+	{
+		state = Disconnected;
+		return;
+	}
 
 	emit SignalError(QString("Socket error [%1]: %2").arg(int(err)).arg(socket->errorString()));
 }
@@ -554,7 +613,7 @@ void Smtp::OnSocketRead()
 			if (code[0] == '2')
 			{
 				state = Authenticated;
-				OnSendNext();
+				SendNext();
 			}
 			else
 			{
@@ -567,11 +626,10 @@ void Smtp::OnSocketRead()
 		case RcptAckPending:
 			if (code[0] != '2') {
 				emit SignalError(QString("Mail failed 2: %1 - %2").arg(QString(line)).arg(code.toInt()));
-				OnSendNext();
+				SendNext();
 				state = BodySent;
 			}
-			else
-				SendNext(code, line);
+			else SendMail(code, line);
 			break;
 		case SendingBody:
 			SendBody(code, line);
@@ -588,8 +646,9 @@ void Smtp::OnSocketRead()
 					emit SignalDone(pending.first());
 				}
 				pending.removeFirst();
+				if( pending.count() == 0 ) emit SignalAllDone();
 			}
-			OnSendNext();
+			SendNext();
 			break;
 		case Resetting:
 			if (code[0] != '2')
@@ -599,7 +658,7 @@ void Smtp::OnSocketRead()
 			else
 			{
 				state = Waiting;
-				OnSendNext();
+				SendNext();
 			}
 			break;
 		default:;
@@ -608,47 +667,16 @@ void Smtp::OnSocketRead()
 }
 
 /**
- * Send.
+ * Single mail sending.
+ * (default recipients must be set)
  */
-void Smtp::OnSendNext()
+void Smtp::OnMail(const QString& text, const QString& subject)
 {
-	if (state == Disconnected) return;
-	if (pending.isEmpty())
-	{
-		state = Waiting;
-		return;
-	}
-	if (state != Waiting)
-	{
-		state = Resetting;
-		socket->write("rset\r\n");
-		return;
-	}
-	s_p<Mail> mail = pending.first();
-	rcptNumber = rcptAck = mailAck = 0;
-	recipients = mail->GetRecipients(R_TO) +
-				 mail->GetRecipients(R_CC) +
-				 mail->GetRecipients(R_BCC);
-	if (recipients.count() == 0)
-	{
-		emit SignalError("No recipients!");
-		pending.removeFirst();
-		OnSendNext();
-		return;
-	}
-	socket->write("mail from:<" + ExtractAddress(mail->GetSender()) + ">\r\n");
-	if (extensions.contains("PIPELINING"))
-	{
-		for (const QString& recipient : recipients)
-		{
-			socket->write("rcpt to:<" + ExtractAddress(recipient) + ">\r\n");
-		}
-		state = RcptAckPending;
-	}
-	else
-	{
-		state = MailToSent;
-	}
+	Connect();
+	s_p<Mail> mail(new Mail(defaultSender, subject.size() ? subject : defaultSubject, text));
+	for( const auto& recipient : defaultRecipients ) mail->AddRecipient(recipient);
+
+	Send(mail);
 }
 
 }
