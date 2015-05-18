@@ -6,7 +6,26 @@ It has nothing but SMTP functionality.
 It has no dependencies except QT.  
 But it uses C++11.
 
-## Example
+! OAUTH is not supported, so this library can't send from gmail without changing gmail security settings.
+
+## Example 1
+``` c++
+#include "SmtpNya.hpp"
+
+...
+
+auto smtp = new Nya::Smtp("smtp.mail1.com", "s@mail1.com", "password");
+smtp->SetSubject("Error report for App");
+smtp->SetRecipients(QStringList() << "r1@mail2.com" << "r2@mail3.com");
+
+connect(this, SIGNAL(SignalMail(QString)), smtp, SLOT(OnMail(QString)));
+
+...
+
+emit SignalMail("Mail body");
+```
+
+## Example 2
 ``` c++
 #include "SmtpNya.hpp"
 #include "MailNya.hpp"
@@ -14,13 +33,13 @@ But it uses C++11.
 
 ...
 
-Nya::Smtp smtp("smtp.yandex.ru", "login@yandex.ru", "password");
+Nya::Smtp smtp("smtp.mail1.com", "s@mail1.com", "password");
 // QObject::connect(&smtp, SIGNAL(SignalError(QString)), &Nya::Log::GS(), SLOT(OnLog(QString)));
 smtp.Connect();
 
 // first simple mail
-s_p<Nya::Mail> mail(new Nya::Mail("login@yandex.ru", "Subject", "Mail body"));
-mail->AddRecipient("login@gmail.com");
+s_p<Nya::Mail> mail(new Nya::Mail("s@mail1.com", "Subject", "Mail body"));
+mail->AddRecipient("r@mail2.com");
 mail->AddAttachment("file.txt");
 smtp.Send(mail);
 
@@ -28,8 +47,8 @@ smtp.Send(mail);
 QByteArray ba = "Text 2";
 QFile* file = new QFile("file.txt");
 
-mail.reset(new Nya::Mail("login@yandex.ru", "Subject 2"));
-mail->AddRecipient("login@gmail.com");
+mail.reset(new Nya::Mail("s@mail1.com", "Subject 2"));
+mail->AddRecipient("r@mail2.com");
 mail->SetText("Long mail body");
 mail->AddAttachment("ba.txt", new Nya::Attachment(&ba));
 mail->AddAttachment("file.txt", new Nya::Attachment(file));
