@@ -2,9 +2,10 @@
 #define ATTACHMENTNYA_H
 
 #include "CommonMail.hpp"
-#include <QStringList>
+#include <QIODevice>
 #include <QHash>
 #include <QByteArray>
+#include <QStringList>
 
 
 namespace Nya
