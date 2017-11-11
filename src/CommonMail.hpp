@@ -3,7 +3,9 @@
 
 #include <QByteArray>
 #include <memory>
-#include "nya.hpp"
+
+#define s_p std::shared_ptr
+
 
 namespace Nya
 {

@@ -1,10 +1,7 @@
 # Nya SMTP
-Simple SMTP library for QT 4.8 / 5.*
+*Simple SMTP library for QT 4.8 / 5.\**
 
-This library is based on libqxt v.0.6.2.  
-It has nothing but SMTP functionality.  
-It has no dependencies except QT.  
-But it uses C++11.
+It is based on libqxt v.0.6.2.  
 
 ! OAUTH is not supported, so this library can't send from gmail without changing gmail security settings.
 
