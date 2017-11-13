@@ -1,9 +1,6 @@
 QT = core network
 TEMPLATE = lib
 
-# Remove this line if you don't want it (git update-index --assume-unchanged nya_smtp.pro).
-include(../nya_qt/pri/common.pri)
-
 
 HEADERS += \
 	src/SmtpNya.hpp \
